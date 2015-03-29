@@ -59,8 +59,8 @@
       ret)))
 
 (defn eval-def
-  ([sym] (writef "auto %s = %s" sym "NULL"))
-  ([sym init] (writef "auto %s = %s" sym (eval init))))
+  ([sym] (writef "auto %s = %s" (munge sym) "NULL"))
+  ([sym init] (writef "auto %s = %s" (munge sym) (eval init))))
 
 (defn eval-if
   ([test then] (writef "(bool(%s)) ? (%s) : NULL" (eval test) (eval then)))
@@ -206,7 +206,7 @@
   (-eval [form]
     (if-let [ns (.getNamespace form)]
       (pr-unimplemented "namespaced symbols")
-      (writeln form)))
+      (writeln (munge form))))
   (-eval-literal [form]
     (pr-unimplemented clojure.lang.Symbol))
   clojure.lang.ISeq
@@ -223,8 +223,15 @@
 
 (defn load
   [file]
-  (doseq [form (c/forms file)]
-    (eval form)))
+  (doseq [form (c/forms file)
+          :let [code (binding [exec/*remote-eval* false]
+                       (eval form))]]
+    (binding [exec/*remote-eval* true]
+      (writeln code))
+    #_(when exec/*remote-eval*
+        (.read *standard-input*)
+        (while (.ready *standard-input*)
+          (.readLine *standard-input*)))))
 
 (defn read-eval-print
   []
@@ -250,7 +257,7 @@
     (.read *standard-input*)
     (while (.ready *standard-input*)
       (println (.readLine *standard-input*)))
-    (load "prelude")
+    (load "src/clojure_c/prelude.cljc")
     (while (exec/alive?)
       (print "=> ")
       (flush)
