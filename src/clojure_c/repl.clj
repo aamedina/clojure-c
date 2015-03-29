@@ -7,6 +7,9 @@
             [clojure-c.exec :as exec
              :refer [with-io *standard-input* *standard-output* *process*]]))
 
+(def ^:dynamic *load-pathname* nil)
+(def ^:dynamic *load-verbose* nil)
+
 (defn write
   [& more]
   (let [output (str/join \space more)]
@@ -33,17 +36,21 @@
   (-eval-literal [form]))
 
 (defn eval
-  [form]
-  (let [mform (macroexpand form)]
-    (when-let [compiled-form (-eval mform)]
-      (if exec/*remote-eval*
-        (with-out-str
-          (when-let [ch (.read *standard-input*)]
-            (when (pos? ch)
-              (print (char ch))
-              (while (.ready *standard-input*)
-                (println (.readLine *standard-input*))))))
-        compiled-form))))
+  ([form] (eval form true))
+  ([form top-level?]
+   (let [mform (macroexpand form)]
+     (when-let [compiled-form (-eval mform)]
+       (if exec/*remote-eval*
+         (with-out-str
+           (when-let [ch (.read *standard-input*)]
+             (when (pos? ch)
+               (when top-level?
+                 (print (char ch)))
+               (while (.ready *standard-input*)
+                 (if top-level?
+                   (println (.readLine *standard-input*))
+                   (.readLine *standard-input*))))))
+         compiled-form)))))
 
 (defn pr-unimplemented
   [x]
@@ -59,13 +66,17 @@
       ret)))
 
 (defn eval-def
-  ([sym] (writef "auto %s = %s" (munge sym) "NULL"))
-  ([sym init] (writef "auto %s = %s" (munge sym) (eval init))))
+  ([sym] (writef "auto %s = %s;" (munge sym) "NULL"))
+  ([sym init] (writef "auto %s = %s;" (munge sym) (eval init false))))
 
 (defn eval-if
-  ([test then] (writef "(bool(%s)) ? (%s) : NULL" (eval test) (eval then)))
+  ([test then]
+   (writef "(bool(%s)) ? (%s) : NULL" (eval test false) (eval then false)))
   ([test then else]
-   (writef "(bool(%s)) ? (%s) : (%s)" (eval test) (eval then) (eval else))))
+   (writef "(bool(%s)) ? (%s) : (%s)"
+           (eval test false)
+           (eval then false)
+           (eval else false))))
 
 (defn eval-let
   [[& bindings] exprs]
@@ -122,7 +133,8 @@
 
 (defn eval-import
   [lib]
-  (writef "#include <%s>" (.replace (name lib) "." "/")))
+  (writef "#include <%s>" (.replace (name lib) "." "/"))
+  nil)
 
 (defn eval-new
   [class-name args]
@@ -152,7 +164,7 @@
     ['def sym init] (eval-def sym init)
     ['if test then] (eval-if test then)
     ['if test then else] (eval-if test then else)
-    ['let bindings & exprs] (eval-let bindings exprs)
+    ['let* bindings & exprs] (eval-let bindings exprs)
     ['quote form] (-eval-literal form)
     ['var sym] (eval-var sym)
     ['fn* (sym :guard symbol?) (params :guard vector?) & exprs]
@@ -211,8 +223,7 @@
     (pr-unimplemented clojure.lang.Symbol))
   clojure.lang.ISeq
   (-eval [form]
-    (binding [exec/*remote-eval* false]
-      (eval-seq form)))
+    (eval-seq form))
   (-eval-literal [form]
     (pr-unimplemented clojure.lang.ISeq))
   Object
@@ -223,42 +234,49 @@
 
 (defn load
   [file]
-  (doseq [form (c/forms file)
-          :let [code (binding [exec/*remote-eval* false]
-                       (eval form))]]
-    (binding [exec/*remote-eval* true]
-      (writeln code))
-    #_(when exec/*remote-eval*
-        (.read *standard-input*)
-        (while (.ready *standard-input*)
-          (.readLine *standard-input*)))))
+  (binding [*load-pathname* file]
+    (doseq [form (c/forms file)]
+      (eval form false))))
 
 (defn read-eval-print
   []
   (try
     (when-let [line (not-empty (read-line))]
-      (if-let [ret (eval (read-string line))]
-        (print ret)
-        (println nil)))
+      (binding [*load-verbose* true]
+        (if-let [ret (eval (read-string line))]
+          (print ret)
+          (println nil))))
     (catch Throwable t
       (.printStackTrace t)
       (newline))))
 
+(defn exec-cling
+  [& opts]
+  (exec/exec "cling"
+             "-Xclang" "-std=c++14"
+             "-Xclang" "-O0"
+             "-Xclang" "-g"
+             "-Xclang" "-fstandalone-debug"
+             "-Xclang" "-fexceptions"
+             "-Xclang" "-ftrapv"
+             "-Xclang" "-fno-elide-type"))
+
+(defmacro with-cling
+  [opts & body]
+  `(with-io (exec-cling ~@opts)
+     (let [ret# (do ~@body)]
+       (.destroy *process*)
+       ret#)))
+
 (defn init
   [& args]
-  (with-io (exec/exec "cling"
-                      "-Xclang" "-std=c++14"
-                      "-Xclang" "-O0"
-                      "-Xclang" "-g"
-                      "-Xclang" "-fstandalone-debug"
-                      "-Xclang" "-fexceptions"
-                      "-Xclang" "-ftrapv"
-                      "-Xclang" "-fno-elide-type")
-    (.read *standard-input*)
-    (while (.ready *standard-input*)
-      (println (.readLine *standard-input*)))
-    (load "src/clojure_c/prelude.cljc")
-    (while (exec/alive?)
-      (print "=> ")
-      (flush)
-      (read-eval-print))))
+  (with-io (exec-cling)
+    (binding [*load-verbose* nil]
+      (.read *standard-input*)
+      (while (.ready *standard-input*)
+        (println (.readLine *standard-input*)))
+      (load "src/clojure_c/prelude.cljc")
+      (while (exec/alive?)
+        (print "=> ")
+        (flush)
+        (read-eval-print)))))
