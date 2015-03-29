@@ -1,3 +1,4 @@
+(clojure.core/import* cstdlib)
 (clojure.core/import* cstdio)
 
 (def ^:dynamic *in* stdin)

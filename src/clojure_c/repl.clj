@@ -20,6 +20,7 @@
 (defn writeln
   [& more]
   (let [output (str/join \space more)]
+    (println "sending: " output)
     (when exec/*remote-eval*
       (.write *standard-output* output)
       (.newLine *standard-output*)
@@ -46,7 +47,7 @@
              (when (pos? ch)
                (print (char ch))
                (while (.ready *standard-input*)
-                 (println (.readLine *standard-input*))))))
+                 (print (.readLine *standard-input*))))))
          compiled-form)))))
 
 (defn pr-unimplemented
@@ -243,8 +244,9 @@
     (when-let [line (not-empty (read-line))]
       (binding [*load-verbose* true]
         (if-let [ret (eval (read-string line))]
-          (print ret)
+          (println ret)
           (println nil))))
+    (catch java.io.IOException e)
     (catch Throwable t
       (.printStackTrace t)
       (newline))))
