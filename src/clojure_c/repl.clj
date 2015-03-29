@@ -44,12 +44,9 @@
          (with-out-str
            (when-let [ch (.read *standard-input*)]
              (when (pos? ch)
-               (when top-level?
-                 (print (char ch)))
+               (print (char ch))
                (while (.ready *standard-input*)
-                 (if top-level?
-                   (println (.readLine *standard-input*))
-                   (.readLine *standard-input*))))))
+                 (println (.readLine *standard-input*))))))
          compiled-form)))))
 
 (defn pr-unimplemented
@@ -66,8 +63,10 @@
       ret)))
 
 (defn eval-def
-  ([sym] (writef "auto %s = %s;" (munge sym) "NULL"))
-  ([sym init] (writef "auto %s = %s;" (munge sym) (eval init false))))
+  ([sym]
+   (writef "auto %s = %s;" (munge sym) "NULL"))
+  ([sym init]
+   (writef "auto %s = %s;" (munge sym) (eval init false))))
 
 (defn eval-if
   ([test then]
