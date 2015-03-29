@@ -80,7 +80,8 @@
     ['let bindings & exprs] (eval-let bindings exprs)
     ['quote form] (-eval-literal form)
     ['exit] (writeln ".q")
-    :else (writeln (c/compile (list 'fn* [] form)))))
+    :else (when-let [compiled (c/compile (list 'fn* [] form))]
+            (writeln compiled))))
 
 (extend-protocol Eval
   nil

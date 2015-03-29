@@ -9,7 +9,7 @@
 
 (defmethod -compile :default
   [[op & args]]
-  (printf "UNIMPLEMENTED COMPILE OP: %s\n"))
+  (printf "UNIMPLEMENTED COMPILE OP: %s\n" op))
 
 (defn compile
   [expr]
