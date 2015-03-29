@@ -69,6 +69,79 @@
   [[& bindings] exprs]
   (pr-unimplemented 'let))
 
+(defn eval-var
+  [sym]
+  (pr-unimplemented 'var))
+
+(defn eval-fn
+  ([sigs]
+   (pr-unimplemented 'fn*))
+  ([params exprs]
+   (pr-unimplemented 'fn*))
+  ([sym params exprs]
+   (pr-unimplemented 'fn*)))
+
+(defn eval-loop
+  [bindings exprs]
+  (pr-unimplemented 'loop*))
+
+(defn eval-recur
+  [bindings exprs]
+  (pr-unimplemented 'recur))
+
+(defn eval-throw
+  [expr]
+  (pr-unimplemented 'throw))
+
+(defn eval-catch
+  [exception binding exprs]
+  (pr-unimplemented 'catch))
+
+(defn eval-finally
+  [exprs]
+  (pr-unimplemented 'finally))
+
+(defn eval-try
+  ([exprs] (pr-unimplemented 'try))
+  ([expr catches] (pr-unimplemented 'try))
+  ([expr catches finally] (pr-unimplemented 'try)))
+
+(defn eval-case
+  [e clauses]
+  (pr-unimplemented 'case*))
+
+(defn eval-reify
+  [interfaces & impls]
+  (pr-unimplemented 'reify*))
+
+(defn eval-letfn
+  [[& bindings] exprs]
+  (pr-unimplemented 'letfn*))
+
+(defn eval-import
+  [lib]
+  (pr-unimplemented 'clojure.core/import*))
+
+(defn eval-new
+  [class-name args]
+  (pr-unimplemented 'new))
+
+(defn eval-delete
+  [instance]
+  (pr-unimplemented 'delete))
+
+(defn eval-deftype
+  [type-name class-name fields interfaces impls]
+  (pr-unimplemented 'deftype*))
+
+(defn eval-set!
+  [place expr]
+  (pr-unimplemented 'set!))
+
+(defn eval-dot
+  [expr args]
+  (pr-unimplemented 'dot))
+
 (defn eval-seq
   [form]
   (match (vec form)
@@ -79,6 +152,25 @@
     ['if test then else] (eval-if test then else)
     ['let bindings & exprs] (eval-let bindings exprs)
     ['quote form] (-eval-literal form)
+    ['var sym] (eval-var sym)
+    ['fn* (sym :guard symbol?) (params :guard vector?) & exprs]
+    (eval-fn sym params exprs)
+    ['fn* (params :guard vector?) & exprs] (eval-fn params exprs)
+    ['fn* & sigs] (eval-fn sigs)
+    ['loop* bindings & exprs] (eval-loop bindings exprs)
+    ['recur & exprs] (eval-recur exprs)
+    ['throw expr] (eval-throw expr)
+    ['try & exprs] (eval-try exprs)
+    ['case* e & clauses] (eval-case e clauses)
+    ['reify* interfaces & impls] (eval-reify interfaces impls)
+    ['letfn* bindings & exprs] (eval-letfn bindings exprs)
+    ['clojure.core/import* lib] (eval-import lib)
+    ['new class-name & args] (eval-new class-name args)
+    ['delete instance] (eval-delete instance)
+    ['deftype* type-name class-name fields :implements interfaces & impls]
+    (eval-deftype type-name class-name fields interfaces impls)
+    ['set! place expr] (eval-set! place expr)
+    ['. expr & args] (eval-dot expr args)
     ['exit] (writeln ".q")
     :else (when-let [compiled (c/compile (list 'fn* [] form))]
             (writeln compiled))))
