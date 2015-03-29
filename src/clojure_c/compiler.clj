@@ -53,6 +53,7 @@
   (doseq [x xs
           :when x]
     (cond
+      (map? x) (emit x)
       (seq? x) (apply emits x)
       (fn? x) (x)
       :else (print x))))
@@ -63,8 +64,9 @@
   (newline))
 
 (defn emit-str
-  [expr]
-  (with-out-str (emit expr)))
+  ([expr] (emit-str expr (env)))
+  ([expr env]
+   (with-out-str (emit expr env))))
 
 (defn emitf
   [fmt & args]
@@ -79,18 +81,16 @@
      (when-not (identical? *context* :ctx/expr)
        (emitln ";"))))
 
-(defn pr-unimplemented
-  [x]
-  (.println System/out (format "UNIMPLEMENTED FORM: %s" x)))
-
 (defn emit-do
   [statements]
-  (loop [statements statements
-         ret nil]
-    (if (seq statements)
+  (loop [statements statements]
+    (when (seq statements)
       (let [statement (first statements)]
-        (recur (rest statements) (emit statement)))
-      ret)))
+        (if (seq (rest statements))
+          (do
+            (emit statement (with-ctx :ctx/statement))
+            (recur (rest statements)))
+          (emit statement (with-ctx :ctx/return)))))))
 
 (defn emit-def
   ([sym] (emit-def sym nil))
@@ -111,56 +111,56 @@
 
 (defn emit-let
   [[& bindings] exprs]
-  (pr-unimplemented 'let))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-var
   [sym]
-  (pr-unimplemented 'var))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-fn
   ([sigs]
-   (pr-unimplemented 'fn*))
+   (throw (UnsupportedOperationException.)))
   ([params exprs]
-   (pr-unimplemented 'fn*))
+   (throw (UnsupportedOperationException.)))
   ([sym params exprs]
-   (pr-unimplemented 'fn*)))
+   (throw (UnsupportedOperationException.))))
 
 (defn emit-loop
   [bindings exprs]
-  (pr-unimplemented 'loop*))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-recur
   [bindings exprs]
-  (pr-unimplemented 'recur))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-throw
   [expr]
-  (pr-unimplemented 'throw))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-catch
   [exception binding exprs]
-  (pr-unimplemented 'catch))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-finally
   [exprs]
-  (pr-unimplemented 'finally))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-try
-  ([exprs] (pr-unimplemented 'try))
-  ([expr catches] (pr-unimplemented 'try))
-  ([expr catches finally] (pr-unimplemented 'try)))
+  ([exprs] (throw (UnsupportedOperationException.)))
+  ([expr catches] (throw (UnsupportedOperationException.)))
+  ([expr catches finally] (throw (UnsupportedOperationException.))))
 
 (defn emit-case
   [e clauses]
-  (pr-unimplemented 'case*))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-reify
   [interfaces & impls]
-  (pr-unimplemented 'reify*))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-letfn
   [[& bindings] exprs]
-  (pr-unimplemented 'letfn*))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-import
   [lib]
@@ -169,31 +169,31 @@
 
 (defn emit-new
   [class-name args]
-  (pr-unimplemented 'new))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-delete
   [instance]
-  (pr-unimplemented 'delete))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-deftype
   [type-name class-name fields interfaces impls]
-  (pr-unimplemented 'deftype*))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-set!
   [place expr]
-  (pr-unimplemented 'set!))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-dot
   [expr args]
-  (pr-unimplemented 'dot))
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-invoke
   [[op & args]]
-  )
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-binop
   [op [x y & more]]
-  )
+  (throw (UnsupportedOperationException.)))
 
 (defn emit-seq
   [expr]
@@ -227,6 +227,8 @@
     [(:or '+ '- '/ '*) & args] (emit-binop (first expr) args)
     :else (emit-invoke expr)))
 
+(declare eval-seq)
+
 (extend-protocol Expr
   nil
   (-eval [form] nil)
@@ -252,9 +254,9 @@
   clojure.lang.Keyword
   (-eval [form] form)
   (-emit [form]
-    (pr-unimplemented clojure.lang.Keyword))
+    (throw (UnsupportedOperationException.)))
   (-emit-literal [form]
-    (pr-unimplemented clojure.lang.Keyword))
+    (throw (UnsupportedOperationException.)))
   clojure.lang.Symbol
   (-eval [form] (throw (UnsupportedOperationException.)))
   (-emit [form]
@@ -262,19 +264,18 @@
       (emits (munge ns) "::" (munge (.getName form)))
       (emits (munge form))))
   (-emit-literal [form]
-    (pr-unimplemented clojure.lang.Symbol))
+    (throw (UnsupportedOperationException.)))
   clojure.lang.ISeq
-  (-eval [form] (throw (UnsupportedOperationException.)))
-  (-emit [form]
-    (emit-seq form))
+  (-eval [form] (eval-seq form))
+  (-emit [form] (emit-seq form))
   (-emit-literal [form]
-    (pr-unimplemented clojure.lang.ISeq))
+    (throw (UnsupportedOperationException.)))
   Object
-  (-eval [form] (throw (UnsupportedOperationException.)))
+  (-eval [form] form)
   (-emit [form]
-    (pr-unimplemented (.getName (class form))))
+    (throw (UnsupportedOperationException.)))
   (-emit-literal [form]
-    (pr-unimplemented (.getName (class form)))))
+    (throw (UnsupportedOperationException.))))
 
 (defn lisp-reader
   [file]
@@ -340,118 +341,102 @@
                    (println (.readLine *standard-input*))))))
            compiled-form))))))
 
-(defmacro eval-contextually
-  [& body]
-  `(do
-     (when (identical? *context* :ctx/return)
-       (write "return "))
-     ~@body
-     (when-not (identical? *context* :ctx/expr)
-       (writeln ";"))))
-
 (defn eval-do
   [statements]
-  (loop [statements statements
-         ret nil]
-    (if (seq statements)
+  (loop [statements statements]
+    (when (seq statements)
       (let [statement (first statements)]
-        (recur (rest statements) (eval statement)))
-      ret)))
+        (if (seq (rest statements))
+          (do
+            (eval statement (with-ctx :ctx/statement))
+            (recur (rest statements)))
+          (eval statement (with-ctx :ctx/return)))))))
 
 (defn eval-def
   ([sym] (eval-def sym nil))
-  ([sym init]
-   #_(eval-contextually
-     (writef "auto %s = %s" (munge sym) (eval init (with-ctx :ctx/expr))))))
+  ([sym init] (writeln (emit-def sym init))))
 
 (defn eval-if
-  ([test then]
-   (writef "(bool(%s)) ? (%s) : NULL"
-           (eval test (with-ctx :ctx/expr))
-           (eval then (with-ctx :ctx/expr))))
-  ([test then else]
-   (writef "(bool(%s)) ? (%s) : (%s)"
-           (eval test (with-ctx :ctx/expr))
-           (eval then (with-ctx :ctx/expr))
-           (eval else (with-ctx :ctx/expr)))))
+  ([test then] (writeln (emit-if test then)))
+  ([test then else] (writeln (emit-if test then else))))
 
 (defn eval-let
   [[& bindings] exprs]
-  (pr-unimplemented 'let))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-var
   [sym]
-  (pr-unimplemented 'var))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-fn
   ([sigs]
-   (pr-unimplemented 'fn*))
+   (throw (UnsupportedOperationException.)))
   ([params exprs]
-   (pr-unimplemented 'fn*))
+   (throw (UnsupportedOperationException.)))
   ([sym params exprs]
-   (pr-unimplemented 'fn*)))
+   (throw (UnsupportedOperationException.))))
 
 (defn eval-loop
   [bindings exprs]
-  (pr-unimplemented 'loop*))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-recur
   [bindings exprs]
-  (pr-unimplemented 'recur))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-throw
   [expr]
-  (pr-unimplemented 'throw))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-catch
   [exception binding exprs]
-  (pr-unimplemented 'catch))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-finally
   [exprs]
-  (pr-unimplemented 'finally))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-try
-  ([exprs] (pr-unimplemented 'try))
-  ([expr catches] (pr-unimplemented 'try))
-  ([expr catches finally] (pr-unimplemented 'try)))
+  ([exprs] (throw (UnsupportedOperationException.)))
+  ([expr catches] (throw (UnsupportedOperationException.)))
+  ([expr catches finally] (throw (UnsupportedOperationException.))))
 
 (defn eval-case
   [e clauses]
-  (pr-unimplemented 'case*))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-reify
   [interfaces & impls]
-  (pr-unimplemented 'reify*))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-letfn
   [[& bindings] exprs]
-  (pr-unimplemented 'letfn*))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-import
   [lib]
-  (writef "#include <%s>" (.replace (name lib) "." "/"))
+  (writeln (emit-import lib))
   nil)
 
 (defn eval-new
   [class-name args]
-  (pr-unimplemented 'new))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-delete
   [instance]
-  (pr-unimplemented 'delete))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-deftype
   [type-name class-name fields interfaces impls]
-  (pr-unimplemented 'deftype*))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-set!
   [place expr]
-  (pr-unimplemented 'set!))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-dot
   [expr args]
-  (pr-unimplemented 'dot))
+  (throw (UnsupportedOperationException.)))
 
 (defn eval-seq
   [form]
