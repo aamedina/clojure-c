@@ -6,7 +6,7 @@
             [clojure.core.match :refer [match]]
             [clojure.java.io :as io]))
 
-(def ^:dynamic *context* :ctx/expr)
+(def ^:dynamic *context* :ctx/statemente)
 (def ^:dynamic *locals* nil)
 (def ^:dynamic *loop-locals*)
 (def ^:dynamic *loop-label*)
@@ -19,6 +19,12 @@
 (def ^:dynamic *vars*)
 (def ^:dynamic *in-catch-finally* nil)
 (def ^:dynamic *no-recur* nil)
+
+(defn env
+  []
+  (let [current-env (filter (every-pred (comp :dynamic meta) bound?)
+                            (vals (ns-publics *ns*)))]
+    (zipmap current-env (map deref current-env))))
 
 (defmulti -compile (fn [[op & args]] op))
 

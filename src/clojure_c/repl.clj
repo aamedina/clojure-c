@@ -39,9 +39,9 @@
   (-eval-literal [form]))
 
 (defn eval
-  ([form] (eval form :ctx/statement))
-  ([form ctx]
-   (binding [*context* ctx]
+  ([form] (eval form (env)))
+  ([form env]
+   (with-bindings env
      (let [mform (macroexpand form)]
        (when-let [compiled-form (-eval mform)]
          (if exec/*remote-eval*
