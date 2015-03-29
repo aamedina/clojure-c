@@ -1,6 +1,6 @@
 (ns clojure-c.repl
-  (:refer-clojure :exclude [eval load])
-  (:require [clojure-c.compiler :as c]
+  (:refer-clojure :exclude [eval load compile])
+  (:require [clojure-c.compiler :refer :all]
             [clojure.core.match :refer [match]]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -9,6 +9,7 @@
 
 (def ^:dynamic *load-pathname* nil)
 (def ^:dynamic *load-verbose* nil)
+(def ^:dynamic *debug-io* nil)
 
 (defn write
   [& more]
@@ -20,7 +21,8 @@
 (defn writeln
   [& more]
   (let [output (str/join \space more)]
-    (println "sending: " output)
+    (when *debug-io*
+      (println "sending: " output))
     (when exec/*remote-eval*
       (.write *standard-output* output)
       (.newLine *standard-output*)
@@ -37,18 +39,19 @@
   (-eval-literal [form]))
 
 (defn eval
-  ([form] (eval form true))
-  ([form top-level?]
-   (let [mform (macroexpand form)]
-     (when-let [compiled-form (-eval mform)]
-       (if exec/*remote-eval*
-         (with-out-str
-           (when-let [ch (.read *standard-input*)]
-             (when (pos? ch)
-               (print (char ch))
-               (while (.ready *standard-input*)
-                 (println (.readLine *standard-input*))))))
-         compiled-form)))))
+  ([form] (eval form :ctx/statement))
+  ([form ctx]
+   (binding [*context* ctx]
+     (let [mform (macroexpand form)]
+       (when-let [compiled-form (-eval mform)]
+         (if exec/*remote-eval*
+           (with-out-str
+             (when-let [ch (.read *standard-input*)]
+               (when (pos? ch)
+                 (print (char ch))
+                 (while (.ready *standard-input*)
+                   (println (.readLine *standard-input*))))))
+           compiled-form))))))
 
 (defn pr-unimplemented
   [x]
@@ -64,10 +67,11 @@
       ret)))
 
 (defn eval-def
-  ([sym]
-   (writef "auto %s = %s;" (munge sym) "NULL"))
+  ([sym] (eval-def sym nil))
   ([sym init]
-   (writef "auto %s = %s;" (munge sym) (eval init false))))
+   (if (identical? *context* :ctx/statement)
+     (writef "auto %s = %s;" (munge sym) (eval init false))
+     (writef "(auto %s = %s)" (munge sym) (eval init false)))))
 
 (defn eval-if
   ([test then]
@@ -186,7 +190,7 @@
     ['set! place expr] (eval-set! place expr)
     ['. expr & args] (eval-dot expr args)
     ['exit] (writeln ".q")
-    :else (when-let [compiled (c/compile (list 'fn* [] form))]
+    :else (when-let [compiled (compile (list 'fn* [] form))]
             (writeln compiled))))
 
 (extend-protocol Eval
@@ -235,7 +239,7 @@
 (defn load
   [file]
   (binding [*load-pathname* file]
-    (doseq [form (c/forms file)]
+    (doseq [form (forms file)]
       (eval form false))))
 
 (defn read-eval-print
@@ -272,7 +276,8 @@
 (defn init
   [& args]
   (with-io (exec-cling)
-    (binding [*load-verbose* nil]
+    (binding [*load-verbose* nil
+              *debug-io* true]
       (.read *standard-input*)
       (while (.ready *standard-input*)
         (println (.readLine *standard-input*)))

@@ -6,6 +6,20 @@
             [clojure.core.match :refer [match]]
             [clojure.java.io :as io]))
 
+(def ^:dynamic *context* :ctx/expr)
+(def ^:dynamic *locals* nil)
+(def ^:dynamic *loop-locals*)
+(def ^:dynamic *loop-label*)
+(def ^:dynamic *constants*)
+(def ^:dynamic *constant-ids*)
+(def ^:dynamic *keyword-callsites*)
+(def ^:dynamic *protocol-callsites*)
+(def ^:dynamic *var-callsites*)
+(def ^:dynamic *keywords*)
+(def ^:dynamic *vars*)
+(def ^:dynamic *in-catch-finally* nil)
+(def ^:dynamic *no-recur* nil)
+
 (defmulti -compile (fn [[op & args]] op))
 
 (defmethod -compile :default
