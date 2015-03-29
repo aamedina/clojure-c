@@ -70,7 +70,7 @@
 
 (defn emitf
   [fmt & args]
-  (printf fmt args))
+  (apply printf fmt args))
 
 (defmacro emit-contextually
   [& body]
