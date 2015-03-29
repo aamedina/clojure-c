@@ -1,5 +1,5 @@
 (ns clojure-c.repl
-  (:refer-clojure :exclude [eval])
+  (:refer-clojure :exclude [eval load])
   (:require [clojure-c.compiler :as c]
             [clojure.core.match :refer [match]]
             [clojure.java.io :as io]
@@ -10,16 +10,18 @@
 (defn write
   [& more]
   (let [output (str/join \space more)]
-    (.write *standard-output* output)
+    (when exec/*remote-eval*
+      (.write *standard-output* output))
     output))
 
 (defn writeln
   [& more]
   (let [output (str/join \space more)]
-    (.write *standard-output* output)
-    (.newLine *standard-output*)
-    (when *flush-on-newline*
-      (.flush *standard-output*))
+    (when exec/*remote-eval*
+      (.write *standard-output* output)
+      (.newLine *standard-output*)
+      (when *flush-on-newline*
+        (.flush *standard-output*)))
     output))
 
 (defn writef
@@ -120,7 +122,7 @@
 
 (defn eval-import
   [lib]
-  (pr-unimplemented 'clojure.core/import*))
+  (writef "#include <%s>" (.replace (name lib) "." "/")))
 
 (defn eval-new
   [class-name args]
@@ -202,7 +204,9 @@
     (pr-unimplemented clojure.lang.Keyword))
   clojure.lang.Symbol
   (-eval [form]
-    (pr-unimplemented clojure.lang.Symbol))
+    (if-let [ns (.getNamespace form)]
+      (pr-unimplemented "namespaced symbols")
+      (writeln form)))
   (-eval-literal [form]
     (pr-unimplemented clojure.lang.Symbol))
   clojure.lang.ISeq
@@ -216,6 +220,11 @@
     (pr-unimplemented (.getName (class form))))
   (-eval-literal [form]
     (pr-unimplemented (.getName (class form)))))
+
+(defn load
+  [file]
+  (doseq [form (c/forms file)]
+    (eval form)))
 
 (defn read-eval-print
   []
@@ -241,6 +250,7 @@
     (.read *standard-input*)
     (while (.ready *standard-input*)
       (println (.readLine *standard-input*)))
+    (load "prelude")
     (while (exec/alive?)
       (print "=> ")
       (flush)
