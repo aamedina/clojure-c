@@ -115,8 +115,7 @@
   ([sym] (emit-def sym nil))
   ([sym init]
    (emit-contextually
-     (emits "auto " (munge sym) " = ")
-     (emit init (with-ctx :ctx/expr)))))
+     (emits "auto " (munge sym) " = " init))))
 
 (defn emit-if
   ([test then]
@@ -348,7 +347,7 @@
 
 (defn parse-string
   [s]
-  s)
+  (str/trim-newline s))
 
 (defn eval-asm
   [asm]
@@ -392,8 +391,8 @@
 (defn eval-def
   ([sym] (eval-def sym nil))
   ([sym init]
-   (binding [*context* :ctx/statement]
-     (eval-asm (with-out-str (emit-def sym (eval init (with-ctx :ctx/expr)))))
+   (eval-void (with-out-str (emit-def sym (eval init (with-ctx :ctx/expr)))))
+   (when (expr?)
      sym)))
 
 (defn eval-if
@@ -507,7 +506,7 @@
     (eval-deftype type-name class-name fields interfaces impls)
     ['set! place expr] (eval-set! place expr)
     ['. expr & args] (eval-dot expr args)
-    ['exit] (emits ".q")
+    ['exit] (eval-void '.q)
     :else (emit (list 'fn* [] form))))
 
 (def ^:dynamic *load-pathname* nil)
@@ -517,4 +516,4 @@
   [file]
   (binding [*load-pathname* file]
     (doseq [form (forms file)]
-      (eval form))))
+      (eval form (with-ctx :ctx/statement)))))

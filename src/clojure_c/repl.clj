@@ -12,7 +12,7 @@
   (try
     (when-let [line (not-empty (read-line))]
       (if-let [ret (eval (read-string line))]
-        (print ret)
+        (println ret)
         (println nil)))
     (catch java.io.IOException e)
     (catch Throwable t
