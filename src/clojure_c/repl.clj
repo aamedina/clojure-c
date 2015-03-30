@@ -11,10 +11,9 @@
   []
   (try
     (when-let [line (not-empty (read-line))]
-      (binding [*load-verbose* true]
-        (if-let [ret (eval (read-string line))]
-          (print ret)
-          (println nil))))
+      (if-let [ret (eval (read-string line))]
+        (print ret)
+        (println nil)))
     (catch java.io.IOException e)
     (catch Throwable t
       (.printStackTrace t)

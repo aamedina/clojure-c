@@ -26,7 +26,8 @@
 (def ^:dynamic *vars*)
 (def ^:dynamic *in-catch-finally* nil)
 (def ^:dynamic *no-recur* nil)
-(def ^:dynamic *debug-io* nil)
+(def ^:dynamic *debug-io* true)
+(def ^:dynamic *top-level* true)
 
 (defn env
   []
@@ -41,6 +42,10 @@
 (defn with-locals
   [locals]
   (assoc (env) #'*locals* locals))
+
+(defn top-level
+  [top-level?]
+  (assoc (env) #'*top-level* top-level?))
 
 (defn emit
   ([expr] (emit expr (env)))
@@ -81,6 +86,18 @@
      (when-not (identical? *context* :ctx/expr)
        (emitln ";"))))
 
+(defn expr?
+  []
+  (identical? *context* :ctx/expr))
+
+(defn statement?
+  []
+  (identical? *context* :ctx/statement))
+
+(defn return?
+  []
+  (identical? *context* :ctx/return))
+
 (defn emit-do
   [statements]
   (loop [statements statements]
@@ -90,24 +107,27 @@
           (do
             (emit statement (with-ctx :ctx/statement))
             (recur (rest statements)))
-          (emit statement (with-ctx :ctx/return)))))))
+          (if (statement?)
+            (emit statement)
+            (emit statement (with-ctx :ctx/return))))))))
 
 (defn emit-def
   ([sym] (emit-def sym nil))
   ([sym init]
    (emit-contextually
-     (emitf "auto %s = %s" (munge sym) (emit init (with-ctx :ctx/expr))))))
+     (emits "auto " (munge sym) " = ")
+     (emit init (with-ctx :ctx/expr)))))
 
 (defn emit-if
   ([test then]
    (emitf "(bool(%s)) ? (%s) : NULL"
-           (emit test (with-ctx :ctx/expr))
-           (emit then (with-ctx :ctx/expr))))
+          (emit test (with-ctx :ctx/expr))
+          (emit then (with-ctx :ctx/expr))))
   ([test then else]
    (emitf "(bool(%s)) ? (%s) : (%s)"
-           (emit test (with-ctx :ctx/expr))
-           (emit then (with-ctx :ctx/expr))
-           (emit else (with-ctx :ctx/expr)))))
+          (emit test (with-ctx :ctx/expr))
+          (emit then (with-ctx :ctx/expr))
+          (emit else (with-ctx :ctx/expr)))))
 
 (defn emit-let
   [[& bindings] exprs]
@@ -164,8 +184,8 @@
 
 (defn emit-import
   [lib]
-  (emitf "#include <%s>" (.replace (name lib) "." "/"))
-  nil)
+  (emit-contextually
+    (emits "#include <" (.replace (name lib) "." "/") ">")))
 
 (defn emit-new
   [class-name args]
@@ -233,8 +253,7 @@
   nil
   (-eval [form] nil)
   (-emit [form] (-emit-literal form))
-  (-emit-literal [form]
-    (print "NULL"))
+  (-emit-literal [form] (emits "NULL"))
   Boolean
   (-eval [form] form)
   (-emit [form] (-emit-literal form))
@@ -258,7 +277,7 @@
   (-emit-literal [form]
     (throw (UnsupportedOperationException.)))
   clojure.lang.Symbol
-  (-eval [form] (throw (UnsupportedOperationException.)))
+  (-eval [form] form)
   (-emit [form]
     (if-let [ns (.getNamespace form)]
       (emits (munge ns) "::" (munge (.getName form)))
@@ -308,38 +327,56 @@
   (let [output (str/join \space more)]
     (when exec/*remote-eval*
       (.write *standard-output* output))
-    output))
+    (not-empty output)))
 
 (defn writeln
   [& more]
   (let [output (str/join \space more)]
     (when *debug-io*
-      (println "sending: " output))
+      (.println System/out (str "sending: " output))
+      (.flush System/out))
     (when exec/*remote-eval*
       (.write *standard-output* output)
       (.newLine *standard-output*)
       (when *flush-on-newline*
         (.flush *standard-output*)))
-    output))
+    (not-empty output)))
 
 (defn writef
   [fmt & args]
   (writeln (apply format fmt args)))
 
+(defn parse-string
+  [s]
+  s)
+
+(defn eval-asm
+  [asm]
+  (writeln asm)
+  (if exec/*remote-eval*
+    (with-out-str
+      (when-let [ch (.read *standard-input*)]
+        (when (pos? ch)
+          (print (char ch))
+          (while (.ready *standard-input*)
+            (println (.readLine *standard-input*))))))
+    asm))
+
+(defn eval-void
+  [asm]
+  (writeln asm))
+
 (defn eval
-  ([form] (eval form (env)))
+  ([form] (eval form (with-ctx :ctx/expr)))
   ([form env]
    (with-bindings env
      (let [mform (macroexpand form)]
-       (when-let [compiled-form (-eval mform)]
-         (if exec/*remote-eval*
-           (with-out-str
-             (when-let [ch (.read *standard-input*)]
-               (when (pos? ch)
-                 (print (char ch))
-                 (while (.ready *standard-input*)
-                   (println (.readLine *standard-input*))))))
-           compiled-form))))))
+       (when-let [form (-eval mform)]
+         (let [ret (eval-asm (emit-str form))]
+           (when (expr?)
+             (if exec/*remote-eval*
+               (parse-string ret)
+               form))))))))
 
 (defn eval-do
   [statements]
@@ -350,15 +387,18 @@
           (do
             (eval statement (with-ctx :ctx/statement))
             (recur (rest statements)))
-          (eval statement (with-ctx :ctx/return)))))))
+          (eval statement))))))
 
 (defn eval-def
   ([sym] (eval-def sym nil))
-  ([sym init] (writeln (emit-def sym init))))
+  ([sym init]
+   (binding [*context* :ctx/statement]
+     (eval-asm (with-out-str (emit-def sym (eval init (with-ctx :ctx/expr)))))
+     sym)))
 
 (defn eval-if
-  ([test then] (writeln (emit-if test then)))
-  ([test then else] (writeln (emit-if test then else))))
+  ([test then] (emit-if test then))
+  ([test then else] (emit-if test then else)))
 
 (defn eval-let
   [[& bindings] exprs]
@@ -415,7 +455,7 @@
 
 (defn eval-import
   [lib]
-  (writeln (emit-import lib))
+  (eval-void (with-out-str (emit-import lib)))
   nil)
 
 (defn eval-new
@@ -441,7 +481,7 @@
 (defn eval-seq
   [form]
   (match (vec form)
-    ['quote form] form
+    ['quote form] (emits form)
     ['do & statements] (eval-do statements)
     ['def sym] (eval-def sym)
     ['def sym init] (eval-def sym init)
@@ -467,8 +507,8 @@
     (eval-deftype type-name class-name fields interfaces impls)
     ['set! place expr] (eval-set! place expr)
     ['. expr & args] (eval-dot expr args)
-    ['exit] (writeln ".q")
-    :else (not-empty (writeln (emit-str (list 'fn* [] form))))))
+    ['exit] (emits ".q")
+    :else (emit (list 'fn* [] form))))
 
 (def ^:dynamic *load-pathname* nil)
 (def ^:dynamic *load-verbose* nil)
