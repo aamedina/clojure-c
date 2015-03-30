@@ -380,24 +380,27 @@
 (defn eval-do
   [statements]
   (loop [statements statements]
-    (when (seq statements)
-      (let [statement (first statements)]
-        (if (seq (rest statements))
-          (do
-            (eval statement (with-ctx :ctx/statement))
-            (recur (rest statements)))
-          (eval statement))))))
+    (let [statement (first statements)]
+      (if (seq (rest statements))
+        (do
+          (binding [*context* :ctx/statement]
+            (eval statement))
+          (recur (rest statements)))
+        statement))))
 
 (defn eval-def
   ([sym] (eval-def sym nil))
   ([sym init]
-   (eval-void (with-out-str (emit-def sym (eval init (with-ctx :ctx/expr)))))
+   (eval-asm (with-out-str (emit-def sym (eval init (with-ctx :ctx/expr)))))
    (when (expr?)
      sym)))
 
 (defn eval-if
-  ([test then] (emit-if test then))
-  ([test then else] (emit-if test then else)))
+  ([test then] (eval-if test then nil))
+  ([test then else]
+   (if (eval test)
+     then
+     else)))
 
 (defn eval-let
   [[& bindings] exprs]
@@ -506,7 +509,7 @@
     (eval-deftype type-name class-name fields interfaces impls)
     ['set! place expr] (eval-set! place expr)
     ['. expr & args] (eval-dot expr args)
-    ['exit] (eval-void '.q)
+    ['exit] '.q
     :else (emit (list 'fn* [] form))))
 
 (def ^:dynamic *load-pathname* nil)
@@ -516,4 +519,4 @@
   [file]
   (binding [*load-pathname* file]
     (doseq [form (forms file)]
-      (eval form (with-ctx :ctx/statement)))))
+      (eval form))))
